@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -23,13 +23,12 @@ type request struct {
 }
 
 const (
-	maxWorkers = 10
-	maxQueue   = 10
+	maxWorkers = 3
+	maxQueue   = 5
 )
 
 func main() {
 	var (
-		mutex      sync.Mutex
 		queueSize  int64
 		activeTask int64
 	)
@@ -44,30 +43,32 @@ func main() {
 					Result: GetRandom(req.Req.Range),
 				}
 				req.Resp <- resp
-				mutex.Lock()
-				queueSize--
-				activeTask--
-				fmt.Println("queueSize:", queueSize, "activeTask:", activeTask)
-				mutex.Unlock()
+				atomic.AddInt64(&queueSize, -1)
+				atomic.AddInt64(&activeTask, -1)
 			}
 		}()
 	}
 
-	http.HandleFunc("/testrand", func(w http.ResponseWriter, r *http.Request) {
+	// Set up the http handler function
+	http.HandleFunc("/testrand", handleRequest(&queueSize, &activeTask, taskQueue))
+
+	log.Fatal(http.ListenAndServe(":8080", nil))
+}
+
+func handleRequest(queueSize *int64, activeTask *int64, taskQueue chan request) func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			http.Error(w, "Only POST requests are supported", http.StatusMethodNotAllowed)
 			return
 		}
 
 		// Limit the number of requests to maxQueue
-		mutex.Lock()
-		if queueSize >= maxQueue {
-			mutex.Unlock()
+		if atomic.LoadInt64(queueSize) >= maxQueue {
 			http.Error(w, "Too many requests queued", http.StatusServiceUnavailable)
+			fmt.Println("queueSize:", atomic.LoadInt64(queueSize), "activeTask:", atomic.LoadInt64(activeTask))
 			return
 		}
-		queueSize++
-		mutex.Unlock()
+		atomic.AddInt64(queueSize, 1)
 
 		// Decode the request
 		var randReq randRequest
@@ -85,9 +86,16 @@ func main() {
 			Req:  randReq,
 			Resp: respChan,
 		}
+
+		// Check if there are too many active tasks
+		if atomic.LoadInt64(activeTask) >= maxWorkers {
+			http.Error(w, "Too many active tasks", http.StatusServiceUnavailable)
+			atomic.AddInt64(queueSize, -1)
+			return
+		}
+
 		taskQueue <- req
-		activeTask++
-		fmt.Println("queueSize:", queueSize, "activeTask:", activeTask)
+		atomic.AddInt64(activeTask, 1)
 
 		// Wait for the response
 		select {
@@ -99,12 +107,9 @@ func main() {
 			}
 		case <-time.After(10 * time.Second):
 			http.Error(w, "Request timed out", http.StatusRequestTimeout)
-			mutex.Lock()
-			queueSize--
-			activeTask--
-			mutex.Unlock()
+			atomic.AddInt64(queueSize, -1)
+			atomic.AddInt64(activeTask, -1)
 		}
-	})
-
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	}
 }
+
