@@ -107,13 +107,10 @@ func CalProfit(amount float64, pay float64) float64 {
 		// Multiply two big floats
 		betAmount := big.NewFloat(amount)
 		payout := big.NewFloat(pay)
-		log.Println("betAmount:", betAmount)
-		log.Println("payout:", payout)
 		profit := new(big.Float).Sub(
 			new(big.Float).Mul(betAmount, payout),
 			betAmount,
 		)
-		log.Println("profit1", profit)
 		roundedProfit, _ := profit.Float64()
 		roundedProfit = floatRound(roundedProfit, 8)
 
