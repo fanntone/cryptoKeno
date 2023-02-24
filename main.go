@@ -67,8 +67,6 @@ func main() {
 
         go func() {
 			for req := range taskQueue2 {
-                // log.Println("req.Req.SelectedFields", req.Req.SelectedFields)
-                // log.Println("req.Req.BetAmount", req.Req.BetAmount)
                 payout, winfields, profit := SettleKeno(req.Req.SelectedFields, req.Req.BetAmount)
 				resp := cryptoKeonResponse{
 					Payout: payout,

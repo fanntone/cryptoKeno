@@ -3,11 +3,13 @@ package main
 
 // 引入套件
 import (
-	// "fmt"
+	// "fmt"	
 	"math/rand"
 	"time"
 	"log"
 	"strconv"
+	"math/big"
+	"math"
 
 	hdwallet "github.com/miguelmota/go-ethereum-hdwallet"
 	bip39 "github.com/tyler-smith/go-bip39"
@@ -70,12 +72,8 @@ func RandomList() []int {
 		if i > 9 {
 			break
 		}
-		// log.Println("i:", i)
-		// log.Println("perm[i]:", perm[i])
-		// log.Println("list[i]:", list[i])
         list[i] = perm[i]+1
     }
-	// log.Println("list:", list)
 	return list
 }
 
@@ -99,14 +97,32 @@ func SettleKeno(selectedFields []int, betAmount float64) (string, []int, float64
         }
     }
 	payout := PayoutMap(len(selectedFields))[sameCount]
-	// log.Println("inputNums: ", inputNums)
-	// log.Println("selectedFields: ", selectedFields)
-	// log.Println("len(selectedFields: ", len(selectedFields))
-	// log.Println("sameCount: ", sameCount)
-	// log.Println("payout: ", payout)
-	profit := (betAmount * payout) - betAmount
-	
+
+	// f
+	profit := CalProfit(betAmount, payout)
 	return strconv.FormatFloat(payout, 'f', 2, 64), randNums, profit
+}
+
+func CalProfit(amount float64, pay float64) float64 {
+		// Multiply two big floats
+		betAmount := big.NewFloat(amount)
+		payout := big.NewFloat(pay)
+		log.Println("betAmount:", betAmount)
+		log.Println("payout:", payout)
+		profit := new(big.Float).Sub(
+			new(big.Float).Mul(betAmount, payout),
+			betAmount,
+		)
+		log.Println("profit1", profit)
+		roundedProfit, _ := profit.Float64()
+		roundedProfit = floatRound(roundedProfit, 8)
+
+		return roundedProfit
+}
+
+func floatRound(x float64, prec int) float64 {
+	pow := math.Pow(10, float64(prec))
+	return math.Round(x*pow) / pow
 }
 
 func PayoutMap(len int) []float64 {
