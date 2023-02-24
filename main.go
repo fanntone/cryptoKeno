@@ -28,9 +28,9 @@ type cryptoKeonRequest struct {
 }
 
 type cryptoKeonResponse struct {
-    Payout     string    `json:"Payout"`  
-    WinFields  []int     `json:"WinFields"`
-    Profit     float64   `json:"Profit"`
+    Payout     string    `json:"Payout"`    // 倍率
+    WinFields  []int     `json:"WinFields"`  
+    Profit     float64   `json:"Profit"`    
 }
 
 type keonRequest struct {
@@ -67,10 +67,13 @@ func main() {
 
         go func() {
 			for req := range taskQueue2 {
+                // log.Println("req.Req.SelectedFields", req.Req.SelectedFields)
+                // log.Println("req.Req.BetAmount", req.Req.BetAmount)
+                payout, winfields, profit := SettleKeno(req.Req.SelectedFields, req.Req.BetAmount)
 				resp := cryptoKeonResponse{
-					Payout: "0.000x",
-                    WinFields: []int{39,24,37,34,6,2,11,18,32,19},
-                    Profit: -0.00000100,
+					Payout: payout,
+                    WinFields: winfields,
+                    Profit: profit,
 				}
 				req.Resp <- resp
 				atomic.AddInt64(&queueSize, -1)
@@ -181,9 +184,10 @@ func cryptoKeon(queueSize *int64, activeTask *int64, taskQueue chan keonRequest)
 
 		// Wrap the request in a task function and send it to the task queue
 		req := keonRequest{
-			Req:  cryptokeonReq,
+			Req: cryptokeonReq,
 			Resp: respChan,
 		}
+        // log.Println("req.Req", cryptokeonReq)
 
 		// Check if there are too many active tasks
 		if atomic.LoadInt64(activeTask) >= maxWorkers {
@@ -210,3 +214,4 @@ func cryptoKeon(queueSize *int64, activeTask *int64, taskQueue chan keonRequest)
 		}
 	}
 }
+

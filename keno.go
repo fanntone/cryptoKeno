@@ -3,9 +3,9 @@ package main
 
 // 引入套件
 import (
-	"fmt"
+	// "fmt"
 	"math/rand"
-
+	"time"
 	"log"
 	"strconv"
 
@@ -55,100 +55,82 @@ func GetRandom(num int) int {
 	s1 := rand.NewSource(GetSefeRandomSeed())
 	r1 := rand.New(s1)
 	x := r1.Intn(num)
-	// fmt.Print("Rand result: = ", x, ", ")
 
 	return x
 }
 
-// RollADice :
-// Bet on numbers, 1 to 6.
-// Winning bet pays up to 5.88x
-func RollADice(num [6]int, money float64) (int, float64) {
-	winvalue := 0.0
-	x := (GetRandom(6) + 1)
+func RandomList() []int {
+    //Provide seed
+    rand.Seed(time.Now().UnixNano())
 
-	betTable := []float64{0, 5.88, 2.94, 1.96, 1.47, 1.18, 0}
-	total := num[0] + num[1] + num[2] + num[3] + num[4] + num[5]
-
-	if total <= 0 || total >= 6 {
-		return x, winvalue
-	}
-
-	if (1 == num[0] && x == 1) || (1 == num[1] && x == 2) || (1 == num[2] && x == 3) ||
-		(1 == num[3] && x == 4) || (1 == num[4] && x == 5) || (1 == num[5] && x == 6) {
-		winvalue = betTable[total] * float64(money)
-	}
-
-	fmt.Println("Win value: = ", winvalue)
-	return x, winvalue
-}
-
-// TwoDice :
-// Bet on sum, 2 to 12.
-// Winning bet pays up to 35.64x
-func TwoDice(num [12]int, money float64) (int, float64) {
-	winvalue := 0.0
-	x := (GetRandom(6) + GetRandom(6) + 2)
-
-	chanceTable := []float64{2.78, 5.56, 8.33, 11.11, 13.89, 16.67, 13.89, 11.11, 8.33, 5.56, 2.78}
-	total := 0
-	for i := 0; i < 11; i++ {
-		total += num[i]
-	}
-
-	if total <= 0 || total >= 11 {
-		return x, winvalue
-	}
-	chance := float64(0)
-	for i := 0; i < 11; i++ {
-		if num[i] > 0 {
-			chance += chanceTable[i]
+    //Generate a random array of length form 0~num-1
+    perm := rand.Perm(40)
+	list := []int{0,0,0,0,0,0,0,0,0,0}
+    for i := range perm {
+		if i > 9 {
+			break
 		}
-	}
-
-	if num[x-2] == 1 {
-		winvalue = 98 * float64(money) / chance
-	}
-
-	fmt.Println("Win value: = ", winvalue)
-	return x, winvalue
+		// log.Println("i:", i)
+		// log.Println("perm[i]:", perm[i])
+		// log.Println("list[i]:", list[i])
+        list[i] = perm[i]+1
+    }
+	// log.Println("list:", list)
+	return list
 }
 
-// CoinFilp :
-// 50% win chance.
-// Winning bet pays 1.98x
-func CoinFilp(num int, money float64) (int, float64) {
-	winvalue := 0.0
-	x := GetRandom(2)
+func SettleKeno(selectedFields []int, betAmount float64) (string, []int, float64){
+    randNums := RandomList() // 產生一個亂數陣列
 
-	if num < 0 || num > 1 {
-		return x, winvalue
-	}
+    inputNums := selectedFields // 輸入的不定長度陣列
 
-	if num == x {
-		winvalue = 1.98 * money
-	}
+    // 建立一個 map 來記錄亂數陣列中每個數字出現的次數
+    randNumsCount := make(map[int]int)
+    for _, n := range randNums {
+        randNumsCount[n]++
+    }
 
-	fmt.Println("Win value: = ", winvalue)
-	return x, winvalue
+    // 比對輸入陣列中每個數字在亂數陣列中出現的次數，計算相同的個數
+    sameCount := 0
+    for _, n := range inputNums {
+        if count, ok := randNumsCount[n]; ok && count > 0 {
+            sameCount++
+            randNumsCount[n]--
+        }
+    }
+	payout := PayoutMap(len(selectedFields))[sameCount]
+	// log.Println("inputNums: ", inputNums)
+	// log.Println("selectedFields: ", selectedFields)
+	// log.Println("len(selectedFields: ", len(selectedFields))
+	// log.Println("sameCount: ", sameCount)
+	// log.Println("payout: ", payout)
+	profit := (betAmount * payout) - betAmount
+	
+	return strconv.FormatFloat(payout, 'f', 2, 64), randNums, profit
 }
 
-// Etheroll :
-// Any win chance, 1% to 97%.
-// Winning bet pays up to 98x
-// Return (random, winvalue)
-func Etheroll(num int, money float64) (int, float64) {
-	winvalue := 0.0
-	x := GetRandom(100) + 1
-
-	if num <= 0 || num >= 98 {
-		return x, winvalue
+func PayoutMap(len int) []float64 {
+	if len == 1 {
+		return []float64{0.0, 3.96}
+	} else if len == 2 {
+		return []float64{0.0, 1.9, 4.5}
+	} else if len == 3 {
+		return []float64{0.0, 1.0, 3.1, 10.4}
+	} else if len == 4 {
+		return []float64{0.0, 0.8, 1.8, 5.0, 22.5}
+	} else if len == 5 {
+		return []float64{0.0, 0.25, 1.4, 4.1, 16.5, 36.0}
+	} else if len == 6 {
+		return []float64{0.0, 0.0, 1.0, 3.68, 7.0, 16.5, 40.0}
+	} else if len == 7 {
+		return []float64{0.0, 0.0 ,0.47, 3.0, 4.5, 14.0, 31.0, 60.0}
+	} else if len == 8 {
+		return []float64{0.0, 0.0, 0.0, 2.2, 4.0, 13.0, 22.0, 55.0, 70.0}
+	} else if len == 9 {
+		return []float64{0.0, 0.0, 0.0, 1.55, 3.0, 8.0, 15.0, 44.0, 60.0, 70.0}
+	} else if len == 10 {
+		return []float64{0.0, 0.0, 0.0, 1.4, 2.25, 4.5, 8.0, 17.0, 50.0, 80.0, 100.0}
 	}
 
-	if x <= num {
-		winvalue = (98 / (float64)(num)) * money
-	}
-
-	fmt.Println("Win value: = ", winvalue)
-	return x, winvalue
+	return []float64{0}
 }
