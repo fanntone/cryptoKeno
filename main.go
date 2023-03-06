@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"sync/atomic"
 	"time"
+    "strconv"
 )
 
 type randRequest struct {
@@ -23,14 +24,16 @@ type request struct {
 }
 
 type cryptoKeonRequest struct {
-    SelectedFields	  []int      `json:"selectedField"`
-    BetAmount         float64    `json:"betAmount"`
+    SelectedFields  []int       `json:"SelectedField"`
+    BetAmount       float64     `json:"BetAmount"`
+    CoinType        string      `json:"CoinType"`     
 }
 
 type cryptoKeonResponse struct {
     Payout     string    `json:"Payout"`    // 倍率
     WinFields  []int     `json:"WinFields"`  
     Profit     float64   `json:"Profit"`    
+    CoinType   string    `json:"CoinType"`     
 }
 
 type keonRequest struct {
@@ -44,6 +47,9 @@ const (
 )
 
 func main() {
+
+    InitSQLConnect()
+
 	var (
 		queueSize  int64
 		activeTask int64
@@ -68,11 +74,36 @@ func main() {
         go func() {
 			for req := range taskQueue2 {
                 payout, winfields, profit := SettleKeno(req.Req.SelectedFields, req.Req.BetAmount)
-				resp := cryptoKeonResponse{
-					Payout: payout,
+				// 不同幣種的下限值會不一樣, 這邊還需要再優化
+                switch req.Req.CoinType {
+                case "ETH":
+                    if req.Req.BetAmount < 0.0001 {
+                        continue
+                    }
+                case "USDT":
+                    if req.Req.BetAmount < 1.0 {
+                        continue
+                    }
+
+                default:
+                    continue
+                }                
+
+                resp := cryptoKeonResponse{
+					Payout: strconv.FormatFloat(payout, 'f', 2, 64),
                     WinFields: winfields,
                     Profit: profit,
+                    CoinType: req.Req.CoinType,
 				}
+                
+                grs := GameResult {
+                    Payout: payout,
+                    WinFields: winfields,
+                    Profit: profit,
+                    Coin:resp.CoinType,
+                }
+
+                AppendBetHistory(grs)
 				req.Resp <- resp
 				atomic.AddInt64(&queueSize, -1)
 				atomic.AddInt64(&activeTask, -1)
@@ -89,9 +120,7 @@ func main() {
 
 func handleRequest(queueSize *int64, activeTask *int64, taskQueue chan request) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-        w.Header().Set("Access-Control-Allow-Origin", "http://localhost:8081")
-        w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-        w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+        crosSettings(w)
 
 		if r.Method != "POST" {
 			http.Error(w, "Only POST requests are supported", http.StatusMethodNotAllowed)
@@ -151,11 +180,8 @@ func handleRequest(queueSize *int64, activeTask *int64, taskQueue chan request) 
 
 func cryptoKeon(queueSize *int64, activeTask *int64, taskQueue chan keonRequest) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-        w.Header().Set("Access-Control-Allow-Origin", "http://localhost:8080")
-		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-        w.Header().Set("Access-Control-Allow-Credentials", "true")
-        w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
-        
+        crosSettings(w)
+
         if r.Method != "POST" {
 			http.Error(w, "Only POST requests are supported", http.StatusMethodNotAllowed)
 			return
@@ -213,3 +239,9 @@ func cryptoKeon(queueSize *int64, activeTask *int64, taskQueue chan keonRequest)
 	}
 }
 
+func crosSettings(w http.ResponseWriter) {
+    w.Header().Set("Access-Control-Allow-Origin", "http://localhost:8080")
+    w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+    w.Header().Set("Access-Control-Allow-Credentials", "true")
+    w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
+}

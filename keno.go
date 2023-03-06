@@ -77,7 +77,7 @@ func RandomList() []int {
 	return list
 }
 
-func SettleKeno(selectedFields []int, betAmount float64) (string, []int, float64){
+func SettleKeno(selectedFields []int, betAmount float64) (float64, []int, float64){
     randNums := RandomList() // 產生一個亂數陣列
 
     inputNums := selectedFields // 輸入的不定長度陣列
@@ -100,7 +100,7 @@ func SettleKeno(selectedFields []int, betAmount float64) (string, []int, float64
 
 	// f
 	profit := CalProfit(betAmount, payout)
-	return strconv.FormatFloat(payout, 'f', 2, 64), randNums, profit
+	return payout, randNums, profit
 }
 
 func CalProfit(amount float64, pay float64) float64 {
