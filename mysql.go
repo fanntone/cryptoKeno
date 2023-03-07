@@ -15,7 +15,7 @@ import (
 type GameResult struct {
 	GameId    uint64  `gorm:"primaryKey;autoIncrement"`
 	Payout    float64 `gorm:"column:payout"`
-	WinFields []int   `gorm:"column:win_fields;type:text"`
+	WinFields string  `gorm:"column:win_fields;type:text"`
 	Profit    float64 `gorm:"column:profit"`
 	Coin      string  `gorm:"column:coin"`
 }
@@ -41,27 +41,27 @@ func (GameResult) TableName() string {
 	return "game_results"
 }
 
-func (g *GameResult) BeforeSave(*gorm.DB) error {
+func (g *GameResult) BeforeSave(tx *gorm.DB) error {
     winFieldsBytes, err := json.Marshal(g.WinFields)
     if err != nil {
         return err
     }
-    var winFields []int
-    if err := json.Unmarshal(winFieldsBytes, &winFields); err != nil {
+    if err := json.Unmarshal(winFieldsBytes, &g.WinFields); err != nil {
         return err
     }
-    g.WinFields = winFields
     return nil
 }
-func (g *GameResult) AfterFind(*gorm.DB) error {
-	winFieldsBytes := []byte(fmt.Sprintf("%v", g.WinFields))
-	var winFields []int
-	if err := json.Unmarshal(winFieldsBytes, &winFields); err != nil {
-		return err
-	}
-	g.WinFields = winFields
-	return nil
-}
+
+// func (g *GameResult) AfterFind(tx *gorm.DB) error {
+//     winFieldsBytes := []byte(fmt.Sprintf("%v", g.WinFields))
+//     var winFields []int
+//     if err := json.Unmarshal(winFieldsBytes, &winFields); err != nil {
+//         return err
+//     }
+//     g.WinFields = winFields
+//     return nil
+// }
+
 
 func InitSQLConnect() {
 	defer handlePanic()
@@ -93,7 +93,8 @@ func AppendBetHistory(gameResult GameResult) {
     }()
 
     // 获取行锁
-    tx.WithContext(context.Background()).Clauses(clause.Locking{Strength: "UPDATE"}).Find(&GameResult{})
+    tx.WithContext(context.Background()).Clauses(
+		clause.Locking{Strength: "UPDATE"}).Find(&GameResult{})
 
 
     // 执行更新操作

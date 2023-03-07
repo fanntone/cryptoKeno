@@ -87,21 +87,25 @@ func main() {
 
                 default:
                     continue
-                }                
+                }                           
+                wf, err := json.Marshal(winfields)
+                if err != nil {
+                    continue
+                }
+                grs := GameResult {
+                    Payout: payout,
+                    WinFields: string(wf),
+                    Profit: profit,
+                    Coin:req.Req.CoinType,
+                }
 
+                // response
                 resp := cryptoKeonResponse{
 					Payout: strconv.FormatFloat(payout, 'f', 2, 64),
                     WinFields: winfields,
                     Profit: profit,
                     CoinType: req.Req.CoinType,
 				}
-                
-                grs := GameResult {
-                    Payout: payout,
-                    WinFields: winfields,
-                    Profit: profit,
-                    Coin:resp.CoinType,
-                }
 
                 AppendBetHistory(grs)
 				req.Resp <- resp

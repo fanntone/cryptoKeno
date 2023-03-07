@@ -3,13 +3,12 @@ package main
 
 // 引入套件
 import (
-	// "fmt"	
-	"math/rand"
-	"time"
 	"log"
-	"strconv"
-	"math/big"
 	"math"
+	"math/big"
+	"math/rand"
+	"strconv"
+	"time"
 
 	hdwallet "github.com/miguelmota/go-ethereum-hdwallet"
 	bip39 "github.com/tyler-smith/go-bip39"
@@ -100,6 +99,7 @@ func SettleKeno(selectedFields []int, betAmount float64) (float64, []int, float6
 
 	// f
 	profit := CalProfit(betAmount, payout)
+	
 	return payout, randNums, profit
 }
 
