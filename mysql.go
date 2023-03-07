@@ -10,14 +10,27 @@ import (
 	"gorm.io/gorm"
 	"context"
 	"gorm.io/gorm/clause"
+	"time"
 )
 
 type GameResult struct {
-	GameId    uint64  `gorm:"primaryKey;autoIncrement"`
-	Payout    float64 `gorm:"column:payout"`
-	WinFields string  `gorm:"column:win_fields;type:text"`
-	Profit    float64 `gorm:"column:profit"`
-	Coin      string  `gorm:"column:coin"`
+	GameId    	uint64  		`gorm:"primaryKey;autoIncrement"`
+	Payout    	float64 		`gorm:"column:payout"`
+	WinFields 	string  		`gorm:"column:win_fields;type:text"`
+	Profit    	float64 		`gorm:"column:profit"`
+	Coin      	string  		`gorm:"column:coin"`
+	CreatedAt  	time.Time 		`gorm:"column:created_at"`
+	UpdatedAt  	time.Time 		`gorm:"column:updated_at"`
+}
+
+type Member struct {
+	MemberId 	uint64 		`gorm:"primaryKey;autoIncrement"`
+	Email 		string 		`gorm:"column:email;type:text"`
+	Wallet 		string 		`gorm:"column:wallet;type:text"` 
+	PrivateKey  string 		`gorm:"column:private_key;type:text"`
+	Balance 	float64 	`gorm:"column:balance"`
+	CreatedAt  time.Time 	`gorm:"column:created_at"`
+	UpdatedAt  time.Time 	`gorm:"column:updated_at"`
 }
 
 const (
@@ -39,6 +52,10 @@ var (
 // 設置資料表名稱為 game_results
 func (GameResult) TableName() string {
 	return "game_results"
+}
+
+func (Member) TableName() string {
+	return "members"
 }
 
 func (g *GameResult) BeforeSave(tx *gorm.DB) error {
@@ -74,7 +91,7 @@ func InitSQLConnect() {
 	}
 
 	// 初始化表结构
-	err = DB.AutoMigrate(&GameResult{})
+	err = DB.AutoMigrate(&GameResult{}, &Member{})
 	if err != nil {
 		panic(err)
 	}
@@ -83,7 +100,7 @@ func InitSQLConnect() {
 func AppendBetHistory(gameResult GameResult) {
     defer handlePanic()
 
-    // 开始事务
+    // 開始事務
     tx := DB.Begin()
     defer func() {
         if r := recover(); r != nil {
@@ -92,12 +109,12 @@ func AppendBetHistory(gameResult GameResult) {
         }
     }()
 
-    // 获取行锁
+    // 獲取行鎖(必須)
     tx.WithContext(context.Background()).Clauses(
 		clause.Locking{Strength: "UPDATE"}).Find(&GameResult{})
 
 
-    // 执行更新操作
+    // 執行更新
     if err := tx.Create(&gameResult).Error; err != nil {
         tx.Rollback()
         panic(err)

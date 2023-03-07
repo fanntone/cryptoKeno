@@ -42,8 +42,8 @@ type keonRequest struct {
 }
 
 const (
-	maxWorkers = 3
-	maxQueue   = 5
+	maxWorkers = 5
+	maxQueue   = 50
 )
 
 func main() {
