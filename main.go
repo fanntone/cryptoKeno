@@ -120,7 +120,13 @@ func main() {
 	// Set up the http handler function
 	http.HandleFunc("/testrand", handleRequest(&queueSize, &activeTask, taskQueue))
 	http.HandleFunc("/cryptokeon", cryptoKeon(&queueSize, &activeTask, taskQueue2))
+    
+    // API
+    http.HandleFunc("/getPlayerBalance", getPlayerBalance)
+    http.HandleFunc("/getAllBetHistory", getAllBetHistory)
 
+    
+    // Start server
 	log.Fatal(http.ListenAndServe(":5566", nil))
 }
 
@@ -250,4 +256,56 @@ func crosSettings(w http.ResponseWriter) {
 	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Credentials", "true")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
+}
+
+func getPlayerBalance(w http.ResponseWriter, r *http.Request) {
+    crosSettings(w)
+
+    type PlayerBalanceRequest struct {
+        Wallet  string  `json:"wallet"`
+    }
+	var req PlayerBalanceRequest
+    err := json.NewDecoder(r.Body).Decode(&req)
+    if err != nil {
+        http.Error(w, "Invalid request format", http.StatusBadRequest)
+        return
+    }
+
+    type PlayerBalanceResponse struct {
+        Amount  float64  `json:"amount"`
+    }
+    resp := PlayerBalanceResponse {
+        Amount: getPlayerBalanceFromDB(req.Wallet),
+    }
+
+    err = json.NewEncoder(w).Encode(resp)
+    if err != nil {
+        log.Println("Failed to write response:", err)
+    }
+}
+
+func getAllBetHistory(w http.ResponseWriter, r *http.Request){
+    crosSettings(w)
+
+    type AllBetHistoryRequest struct {
+        GameId  uint64  `json:"game_id"` 
+    }
+    var req AllBetHistoryRequest
+    err := json.NewDecoder(r.Body).Decode(&req)
+    if err != nil {
+        http.Error(w, "Invalid request format", http.StatusBadRequest)
+        return
+    }
+
+    type AllBetHistoryReponse struct {
+        Records  []GameResult  `json:"records"`
+    }
+    resp := AllBetHistoryReponse {
+        Records: getAllBetHistoryFromDB(req.GameId),
+    }
+
+    err = json.NewEncoder(w).Encode(resp)
+    if err != nil {
+        log.Println("Failed to write response:", err)
+    }
 }

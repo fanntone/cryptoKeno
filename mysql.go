@@ -148,7 +148,7 @@ func updatePlayerBalance(profit float64) {
 	// 獲取行鎖(必須)
 	err := tx.WithContext(context.Background()).Clauses(
 		clause.Locking{Strength: "UPDATE"}).
-		Where("Wallet = ?", "0x21afd6eeC226Bebcb6Ce290a7710677F1CDE3eF6").
+		Where("wallet = ?", "0x21afd6eeC226Bebcb6Ce290a7710677F1CDE3eF6").
 		First(&user).
 		Error
 	if err != nil {
@@ -156,7 +156,7 @@ func updatePlayerBalance(profit float64) {
 	}
 	log.Println("profit:", profit)
 	log.Println("balance1: ", user.Balance)
-	balance := BigFloatAdd(user.Balance, profit)
+	balance := bigFloatAdd(user.Balance, profit)
 	log.Println("balance2: ", balance)
 	
 	// Update 
@@ -168,7 +168,7 @@ func updatePlayerBalance(profit float64) {
 	}
 }
 
-func BigFloatAdd(a float64, b float64) float64{
+func bigFloatAdd(a float64, b float64) float64{
 	x := big.NewFloat(a)
 	y := big.NewFloat(b)
 	z := new(big.Float).Add(x,y)
@@ -176,4 +176,20 @@ func BigFloatAdd(a float64, b float64) float64{
 	balance = floatRound(balance, 8)
 
 	return balance
+}
+
+// For API
+func getPlayerBalanceFromDB(wallet string) float64{
+	var user Member
+	DB.Where("wallet", wallet).First(&user)
+
+	return user.Balance
+}
+
+
+func getAllBetHistoryFromDB(game_id uint64) []GameResult {
+	var grs []GameResult
+	DB.Where("game_id > ?", game_id).Limit(20).Find(&grs)
+
+	return grs
 }
