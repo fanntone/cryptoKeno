@@ -11,6 +11,7 @@ import (
 	"context"
 	"gorm.io/gorm/clause"
 	"time"
+	"math/big"
 )
 
 type GameResult struct {
@@ -98,8 +99,6 @@ func InitSQLConnect() {
 }
 
 func AppendBetHistory(gameResult GameResult) {
-    defer handlePanic()
-
     // 開始事務
     tx := DB.Begin()
     defer func() {
@@ -120,7 +119,9 @@ func AppendBetHistory(gameResult GameResult) {
         panic(err)
     }
 
-    // 提交事务
+	updatePlayerBalance(gameResult.Profit)
+
+    // 提交事務
     if err := tx.Commit().Error; err != nil {
         panic(err)
     }
@@ -130,5 +131,43 @@ func AppendBetHistory(gameResult GameResult) {
 func handlePanic() {
 	if r := recover(); r != nil {
 		log.Println("recovered from panic:", r)
+	}
+}
+
+func updatePlayerBalance(profit float64) {
+	tx := DB.Begin()
+    defer func() {
+        if r := recover(); r != nil {
+            tx.Rollback()
+            log.Println("defer recovered from panic:", r)
+        }
+    }()
+
+	var user Member
+	
+	// 獲取行鎖(必須)
+	err := tx.WithContext(context.Background()).Clauses(
+		clause.Locking{Strength: "UPDATE"}).
+		Where("Wallet = ?", "0x21afd6eeC226Bebcb6Ce290a7710677F1CDE3eF6").
+		First(&user).
+		Error
+	if err != nil {
+		panic(err)
+	}
+	log.Println("profit:", profit)
+	log.Println("balance1: ", user.Balance)
+	x := big.NewFloat(user.Balance)
+	y := big.NewFloat(profit)
+	z := new(big.Float).Add(x,y)
+	balance, _ := z.Float64()
+	balance = floatRound(balance, 8)
+	log.Println("balance2: ", balance)
+	
+	// Update 
+	tx.Model(&user).Update("balance", balance)
+	
+	// 提交事務
+	if err := tx.Commit().Error; err != nil {
+		panic(err)
 	}
 }
