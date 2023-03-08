@@ -156,11 +156,7 @@ func updatePlayerBalance(profit float64) {
 	}
 	log.Println("profit:", profit)
 	log.Println("balance1: ", user.Balance)
-	x := big.NewFloat(user.Balance)
-	y := big.NewFloat(profit)
-	z := new(big.Float).Add(x,y)
-	balance, _ := z.Float64()
-	balance = floatRound(balance, 8)
+	balance := BigFloatAdd(user.Balance, profit)
 	log.Println("balance2: ", balance)
 	
 	// Update 
@@ -170,4 +166,14 @@ func updatePlayerBalance(profit float64) {
 	if err := tx.Commit().Error; err != nil {
 		panic(err)
 	}
+}
+
+func BigFloatAdd(a float64, b float64) float64{
+	x := big.NewFloat(a)
+	y := big.NewFloat(b)
+	z := new(big.Float).Add(x,y)
+	balance, _ := z.Float64()
+	balance = floatRound(balance, 8)
+
+	return balance
 }
