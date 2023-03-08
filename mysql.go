@@ -30,8 +30,10 @@ type Member struct {
 	Wallet 		string 		`gorm:"column:wallet;type:text"` 
 	PrivateKey  string 		`gorm:"column:private_key;type:text"`
 	Balance 	float64 	`gorm:"column:balance"`
-	CreatedAt  time.Time 	`gorm:"column:created_at"`
-	UpdatedAt  time.Time 	`gorm:"column:updated_at"`
+	Name 		string 		`gorm:"column:name"`
+	Password 	string 		`gorm:"cloumn:password"`
+	CreatedAt   time.Time 	`gorm:"column:created_at"`
+	UpdatedAt   time.Time 	`gorm:"column:updated_at"`
 }
 
 const (
@@ -189,7 +191,26 @@ func getPlayerBalanceFromDB(wallet string) float64{
 
 func getAllBetHistoryFromDB(game_id uint64) []GameResult {
 	var grs []GameResult
-	DB.Where("game_id > ?", game_id).Limit(20).Find(&grs)
-
+	var max uint64 = 20
+	var limit int = 20
+	
+	if game_id > 0 {
+		DB.Where("game_id > ? AND game_id <= ?", game_id, game_id + max).
+		Order("game_id desc").
+		Find(&grs)
+		if len(grs) == 0 {
+			DB.Order("game_id desc").Limit(limit).Find(&grs)
+		}
+	} else {
+		DB.Order("game_id desc").Limit(limit).Find(&grs)
+	}
+	
 	return grs
+}
+
+func getUserDataFromDB(name string) (string,string) {
+	var user Member
+
+	DB.Where("name", name).First(&user)
+	return user.Name, user.Password
 }

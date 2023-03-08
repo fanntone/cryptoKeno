@@ -120,13 +120,13 @@ func main() {
 	// Set up the http handler function
 	http.HandleFunc("/testrand", handleRequest(&queueSize, &activeTask, taskQueue))
 	http.HandleFunc("/cryptokeon", cryptoKeon(&queueSize, &activeTask, taskQueue2))
-    
-    // API
-    http.HandleFunc("/getPlayerBalance", getPlayerBalance)
-    http.HandleFunc("/getAllBetHistory", getAllBetHistory)
 
-    
-    // Start server
+	// API
+	http.HandleFunc("/getPlayerBalance", getPlayerBalance)
+	http.HandleFunc("/getAllBetHistory", getAllBetHistory)
+	http.HandleFunc("/handleLogin", handleLogin)
+
+	// Start server
 	log.Fatal(http.ListenAndServe(":5566", nil))
 }
 
@@ -194,6 +194,10 @@ func cryptoKeon(queueSize *int64, activeTask *int64, taskQueue chan keonRequest)
 	return func(w http.ResponseWriter, r *http.Request) {
 		crosSettings(w)
 
+		if !tokenVerfiy(w, r) {
+			return
+		}
+
 		if r.Method != "POST" {
 			http.Error(w, "Only POST requests are supported", http.StatusMethodNotAllowed)
 			return
@@ -259,53 +263,61 @@ func crosSettings(w http.ResponseWriter) {
 }
 
 func getPlayerBalance(w http.ResponseWriter, r *http.Request) {
-    crosSettings(w)
+	crosSettings(w)
 
-    type PlayerBalanceRequest struct {
-        Wallet  string  `json:"wallet"`
-    }
+	if !tokenVerfiy(w, r) {
+		return
+	}
+
+	type PlayerBalanceRequest struct {
+		Wallet string `json:"wallet"`
+	}
 	var req PlayerBalanceRequest
-    err := json.NewDecoder(r.Body).Decode(&req)
-    if err != nil {
-        http.Error(w, "Invalid request format", http.StatusBadRequest)
-        return
-    }
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		http.Error(w, "Invalid request format", http.StatusBadRequest)
+		return
+	}
 
-    type PlayerBalanceResponse struct {
-        Amount  float64  `json:"amount"`
-    }
-    resp := PlayerBalanceResponse {
-        Amount: getPlayerBalanceFromDB(req.Wallet),
-    }
+	type PlayerBalanceResponse struct {
+		Amount float64 `json:"amount"`
+	}
+	resp := PlayerBalanceResponse{
+		Amount: getPlayerBalanceFromDB(req.Wallet),
+	}
 
-    err = json.NewEncoder(w).Encode(resp)
-    if err != nil {
-        log.Println("Failed to write response:", err)
-    }
+	err = json.NewEncoder(w).Encode(resp)
+	if err != nil {
+		log.Println("Failed to write response:", err)
+	}
 }
 
-func getAllBetHistory(w http.ResponseWriter, r *http.Request){
-    crosSettings(w)
+func getAllBetHistory(w http.ResponseWriter, r *http.Request) {
+	crosSettings(w)
 
-    type AllBetHistoryRequest struct {
-        GameId  uint64  `json:"game_id"` 
-    }
-    var req AllBetHistoryRequest
-    err := json.NewDecoder(r.Body).Decode(&req)
-    if err != nil {
-        http.Error(w, "Invalid request format", http.StatusBadRequest)
-        return
-    }
+	if !tokenVerfiy(w, r) {
+		return
+	}
 
-    type AllBetHistoryReponse struct {
-        Records  []GameResult  `json:"records"`
-    }
-    resp := AllBetHistoryReponse {
-        Records: getAllBetHistoryFromDB(req.GameId),
-    }
+	type AllBetHistoryRequest struct {
+		GameId uint64 `json:"game_id"`
+	}
+	var req AllBetHistoryRequest
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		http.Error(w, "Invalid request format", http.StatusBadRequest)
+		return
+	}
 
-    err = json.NewEncoder(w).Encode(resp)
-    if err != nil {
-        log.Println("Failed to write response:", err)
-    }
+	type AllBetHistoryReponse struct {
+		Records []GameResult `json:"records"`
+	}
+	resp := AllBetHistoryReponse{
+		Records: getAllBetHistoryFromDB(req.GameId),
+	}
+
+	err = json.NewEncoder(w).Encode(resp)
+	if err != nil {
+		log.Println("Failed to write response:", err)
+	}
 }
