@@ -56,63 +56,13 @@ func main() {
 	)
 
 	taskQueue := make(chan request, maxQueue)
-	taskQueue2 := make(chan keonRequest, maxQueue)
+    taskQueue2 := make(chan keonRequest, maxQueue)
+
 
 	// create workers
 	for i := 0; i < maxWorkers; i++ {
-		go func() {
-			for req := range taskQueue {
-				resp := randResponse{
-					Result: GetRandom(req.Req.Range),
-				}
-				req.Resp <- resp
-				atomic.AddInt64(&queueSize, -1)
-				atomic.AddInt64(&activeTask, -1)
-			}
-		}()
-
-		go func() {
-			for req := range taskQueue2 {
-				payout, winfields, profit := SettleKeno(req.Req.SelectedFields, req.Req.BetAmount)
-				// 不同幣種的下限值會不一樣, 這邊還需要再優化
-				switch req.Req.CoinType {
-				case "ETH":
-					if req.Req.BetAmount < 0.0001 {
-						continue
-					}
-				case "USDT":
-					if req.Req.BetAmount < 1.0 {
-						continue
-					}
-
-				default:
-					continue
-				}
-				wf, err := json.Marshal(winfields)
-				if err != nil {
-					continue
-				}
-				grs := GameResult{
-					Payout:    payout,
-					WinFields: string(wf),
-					Profit:    profit,
-					Coin:      req.Req.CoinType,
-				}
-
-				// response
-				resp := cryptoKeonResponse{
-					Payout:    strconv.FormatFloat(payout, 'f', 2, 64),
-					WinFields: winfields,
-					Profit:    profit,
-					CoinType:  req.Req.CoinType,
-				}
-
-				AppendBetHistory(grs)
-				req.Resp <- resp
-				atomic.AddInt64(&queueSize, -1)
-				atomic.AddInt64(&activeTask, -1)
-			}
-		}()
+        go initSampleTaskQueue(taskQueue, queueSize, activeTask)
+		go initBetTaskQueue(taskQueue2, queueSize, activeTask)
 	}
 
 	// test
@@ -128,6 +78,62 @@ func main() {
 
 	// Start server
 	log.Fatal(http.ListenAndServe(":5566", nil))
+}
+
+func initSampleTaskQueue(taskQueue chan request, queueSize int64, activeTask int64) {
+    for req := range taskQueue {
+        resp := randResponse{
+            Result: GetRandom(req.Req.Range),
+        }
+        req.Resp <- resp
+        atomic.AddInt64(&queueSize, -1)
+        atomic.AddInt64(&activeTask, -1)
+    }
+}
+
+func initBetTaskQueue(taskQueue2 chan keonRequest, queueSize int64, activeTask int64) {
+    for req := range taskQueue2 {
+        payout, winfields, profit := SettleKeno(req.Req.SelectedFields, req.Req.BetAmount)
+        // 不同幣種的下限值會不一樣, 這邊還需要再優化
+        switch req.Req.CoinType {
+        case "ETH":
+            if req.Req.BetAmount < 0.0001 {
+                continue
+            }
+        case "USDT":
+            if req.Req.BetAmount < 1.0 {
+                continue
+            }
+
+        default:
+            continue
+        }
+        wf, err := json.Marshal(winfields)
+        if err != nil {
+            continue
+        }
+        grs := GameResult{
+            Payout:    payout,
+            WinFields: string(wf),
+            Profit:    profit,
+            Coin:      req.Req.CoinType,
+        }
+
+        // response
+        resp := cryptoKeonResponse{
+            Payout:    strconv.FormatFloat(payout, 'f', 2, 64),
+            WinFields: winfields,
+            Profit:    profit,
+            CoinType:  req.Req.CoinType,
+        }
+
+        if (!AppendBetHistory(grs, req.Req.BetAmount)){
+            continue
+        }
+        req.Resp <- resp
+        atomic.AddInt64(&queueSize, -1)
+        atomic.AddInt64(&activeTask, -1)
+    }
 }
 
 func handleRequest(queueSize *int64, activeTask *int64, taskQueue chan request) func(http.ResponseWriter, *http.Request) {
@@ -227,7 +233,6 @@ func cryptoKeon(queueSize *int64, activeTask *int64, taskQueue chan keonRequest)
 			Req:  cryptokeonReq,
 			Resp: respChan,
 		}
-		// log.Println("req.Req", cryptokeonReq)
 
 		// Check if there are too many active tasks
 		if atomic.LoadInt64(activeTask) >= maxWorkers {
