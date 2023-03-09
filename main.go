@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strconv"
 	"sync/atomic"
 	"time"
 )
@@ -30,7 +29,7 @@ type cryptoKeonRequest struct {
 }
 
 type cryptoKeonResponse struct {
-	Payout    string  `json:"Payout"` // 倍率
+	Payout    float64 `json:"Payout"` // 倍率
 	WinFields []int   `json:"WinFields"`
 	Profit    float64 `json:"Profit"`
 	CoinType  string  `json:"CoinType"`
@@ -92,6 +91,12 @@ func initSampleTaskQueue(taskQueue chan request, queueSize int64, activeTask int
 }
 
 func initBetTaskQueue(taskQueue2 chan keonRequest, queueSize int64, activeTask int64) {
+    defer func() {
+        if r := recover(); r != nil {
+            log.Println("initBetTaskQueue defer recovered from panic:", r)
+        }
+    }()
+    
     for req := range taskQueue2 {
         payout, winfields, profit := SettleKeno(req.Req.SelectedFields, req.Req.BetAmount)
         // 不同幣種的下限值會不一樣, 這邊還需要再優化
@@ -121,15 +126,21 @@ func initBetTaskQueue(taskQueue2 chan keonRequest, queueSize int64, activeTask i
 
         // response
         resp := cryptoKeonResponse{
-            Payout:    strconv.FormatFloat(payout, 'f', 2, 64),
+            Payout:    payout,
             WinFields: winfields,
             Profit:    profit,
             CoinType:  req.Req.CoinType,
         }
 
-        if (!AppendBetHistory(grs, req.Req.BetAmount)){
-            continue
+        if err := appendBetHistory(grs, req.Req.BetAmount); err != nil { 
+            resp = cryptoKeonResponse{
+                Payout:    0,
+                WinFields: []int{},
+                Profit:    0,
+                CoinType:  req.Req.CoinType,
+            }  
         }
+        
         req.Resp <- resp
         atomic.AddInt64(&queueSize, -1)
         atomic.AddInt64(&activeTask, -1)

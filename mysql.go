@@ -100,7 +100,7 @@ func InitSQLConnect() {
 	}
 }
 
-func AppendBetHistory(gameResult GameResult, betAmount float64) bool {
+func appendBetHistory(gameResult GameResult, betAmount float64) error {
     // 開始事務
     tx := DB.Begin()
 	var err error
@@ -108,11 +108,8 @@ func AppendBetHistory(gameResult GameResult, betAmount float64) bool {
         if r := recover(); r != nil {
             tx.Rollback()
             log.Println("AppendBetHistory defer recovered from panic:", r)
-			err = fmt.Errorf("%v", r)
+			panic(r)
         }
-		if err != nil {
-			log.Println("error occurred:", err)
-		}
     }()
 
 
@@ -127,9 +124,9 @@ func AppendBetHistory(gameResult GameResult, betAmount float64) bool {
         panic(err)
     }
 
- 	if (!updatePlayerBalance(gameResult.Profit, betAmount)) {
+ 	if err = updatePlayerBalance(gameResult.Profit, betAmount); err != nil {
 		tx.Rollback()
-		panic("user.Balance < betAmount")
+		return err
 	}
 
 
@@ -138,7 +135,7 @@ func AppendBetHistory(gameResult GameResult, betAmount float64) bool {
         panic(err)
     }
 	
-	return err != nil
+	return nil
 }
 
 
@@ -148,18 +145,15 @@ func handlePanic() {
 	}
 }
 
-func updatePlayerBalance(profit float64, betAmount float64) bool {
+func updatePlayerBalance(profit float64, betAmount float64) error {
 	tx := DB.Begin()
 	var err error
     defer func() {
         if r := recover(); r != nil {
             tx.Rollback()
             log.Println("updatePlayerBalance defer recovered from panic:", r)
-			err = fmt.Errorf("%v", r)
+			panic(r)
         }
-		if err != nil {
-			log.Println("error occurred:", err)
-		}
     }()
 
 	var user Member
@@ -175,11 +169,11 @@ func updatePlayerBalance(profit float64, betAmount float64) bool {
 	}
 
 	if user.Balance < betAmount {
-		panic("user.Balance < betAmount")
+		tx.Rollback()
+		return fmt.Errorf("user.Balance < betAmount")
 	}
 
 	balance := bigFloatAdd(user.Balance, profit)
-	// log.Println("balance2: ", balance)
 	
 	// Update 
 	tx.Model(&user).Update("balance", balance)
@@ -189,7 +183,7 @@ func updatePlayerBalance(profit float64, betAmount float64) bool {
 		panic(err)
 	}
 
-	return err == nil
+	return nil
 }
 
 func bigFloatAdd(a float64, b float64) float64{
