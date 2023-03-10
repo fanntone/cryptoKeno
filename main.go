@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	// "errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -54,21 +55,21 @@ func main() {
 		activeTask int64
 	)
 
-	taskQueue := make(chan request, maxQueue)
+	// taskQueue := make(chan request, maxQueue)
     taskQueue2 := make(chan keonRequest, maxQueue)
-
+    errChan := make(chan error)
 
 	// create workers
 	for i := 0; i < maxWorkers; i++ {
-        go initSampleTaskQueue(taskQueue, queueSize, activeTask)
-		go initBetTaskQueue(taskQueue2, queueSize, activeTask)
+        // go initSampleTaskQueue(taskQueue, queueSize, activeTask)
+		go initBetTaskQueue(taskQueue2, queueSize, activeTask, errChan)
 	}
 
 	// test
 
 	// Set up the http handler function
-	http.HandleFunc("/testrand", handleRequest(&queueSize, &activeTask, taskQueue))
-	http.HandleFunc("/cryptokeon", cryptoKeon(&queueSize, &activeTask, taskQueue2))
+	// http.HandleFunc("/testrand", handleRequest(&queueSize, &activeTask, taskQueue))
+	http.HandleFunc("/cryptokeon", cryptoKeon(&queueSize, &activeTask, taskQueue2, errChan))
 
 	// API
 	http.HandleFunc("/getPlayerBalance", getPlayerBalance)
@@ -79,24 +80,14 @@ func main() {
 	log.Fatal(http.ListenAndServe(":5566", nil))
 }
 
-func initSampleTaskQueue(taskQueue chan request, queueSize int64, activeTask int64) {
-    for req := range taskQueue {
-        resp := randResponse{
-            Result: GetRandom(req.Req.Range),
-        }
-        req.Resp <- resp
-        atomic.AddInt64(&queueSize, -1)
-        atomic.AddInt64(&activeTask, -1)
-    }
-}
-
-func initBetTaskQueue(taskQueue2 chan keonRequest, queueSize int64, activeTask int64) {
+func initBetTaskQueue(taskQueue2 chan keonRequest, queueSize int64, activeTask int64, errChan chan error) {
     defer func() {
         if r := recover(); r != nil {
             log.Println("initBetTaskQueue defer recovered from panic:", r)
         }
+        close(errChan)
     }()
-    
+
     for req := range taskQueue2 {
         payout, winfields, profit := SettleKeno(req.Req.SelectedFields, req.Req.BetAmount)
         // 不同幣種的下限值會不一樣, 這邊還需要再優化
@@ -133,12 +124,8 @@ func initBetTaskQueue(taskQueue2 chan keonRequest, queueSize int64, activeTask i
         }
 
         if err := appendBetHistory(grs, req.Req.BetAmount); err != nil { 
-            resp = cryptoKeonResponse{
-                Payout:    0,
-                WinFields: []int{},
-                Profit:    0,
-                CoinType:  req.Req.CoinType,
-            }  
+            log.Println("appendBetHistory error")
+            errChan <- fmt.Errorf("failed to append bet history: %v", err)
         }
         
         req.Resp <- resp
@@ -147,67 +134,7 @@ func initBetTaskQueue(taskQueue2 chan keonRequest, queueSize int64, activeTask i
     }
 }
 
-func handleRequest(queueSize *int64, activeTask *int64, taskQueue chan request) func(http.ResponseWriter, *http.Request) {
-	return func(w http.ResponseWriter, r *http.Request) {
-		crosSettings(w)
-
-		if r.Method != "POST" {
-			http.Error(w, "Only POST requests are supported", http.StatusMethodNotAllowed)
-			return
-		}
-
-		// Limit the number of requests to maxQueue
-		if atomic.LoadInt64(queueSize) >= maxQueue {
-			http.Error(w, "Too many requests queued", http.StatusServiceUnavailable)
-			fmt.Println("queueSize:", atomic.LoadInt64(queueSize), "activeTask:", atomic.LoadInt64(activeTask))
-			return
-		}
-		atomic.AddInt64(queueSize, 1)
-
-		// Decode the request
-		var randReq randRequest
-		err := json.NewDecoder(r.Body).Decode(&randReq)
-		if err != nil {
-			http.Error(w, "Invalid request format", http.StatusBadRequest)
-			return
-		}
-
-		// Create a channel for the response
-		respChan := make(chan randResponse)
-
-		// Wrap the request in a task function and send it to the task queue
-		req := request{
-			Req:  randReq,
-			Resp: respChan,
-		}
-
-		// Check if there are too many active tasks
-		if atomic.LoadInt64(activeTask) >= maxWorkers {
-			http.Error(w, "Too many active tasks", http.StatusServiceUnavailable)
-			atomic.AddInt64(queueSize, -1)
-			return
-		}
-
-		taskQueue <- req
-		atomic.AddInt64(activeTask, 1)
-
-		// Wait for the response
-		select {
-		case resp := <-respChan:
-			close(respChan)
-			err := json.NewEncoder(w).Encode(resp)
-			if err != nil {
-				log.Println("Failed to write response:", err)
-			}
-		case <-time.After(10 * time.Second):
-			http.Error(w, "Request timed out", http.StatusRequestTimeout)
-			atomic.AddInt64(queueSize, -1)
-			atomic.AddInt64(activeTask, -1)
-		}
-	}
-}
-
-func cryptoKeon(queueSize *int64, activeTask *int64, taskQueue chan keonRequest) func(http.ResponseWriter, *http.Request) {
+func cryptoKeon(queueSize *int64, activeTask *int64, taskQueue chan keonRequest, errChan chan error) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		crosSettings(w)
 
@@ -267,6 +194,11 @@ func cryptoKeon(queueSize *int64, activeTask *int64, taskQueue chan keonRequest)
 			http.Error(w, "Request timed out", http.StatusRequestTimeout)
 			atomic.AddInt64(queueSize, -1)
 			atomic.AddInt64(activeTask, -1)
+
+        case err := <-errChan:
+            http.Error(w, err.Error(), http.StatusInternalServerError)
+            atomic.AddInt64(queueSize, -1)
+            atomic.AddInt64(activeTask, -1)
 		}
 	}
 }
