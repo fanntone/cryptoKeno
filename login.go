@@ -57,13 +57,13 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
     fmt.Fprintln(w, signedToken)
 }
 
-func tokenVerfiy(w http.ResponseWriter, r *http.Request) bool {
+func tokenVerfiy(w http.ResponseWriter, r *http.Request) (bool,string) {
     // 檢查用戶的JWT是否合規
     tokenString := r.Header.Get("Authorization")
     if tokenString == "" {
         w.WriteHeader(http.StatusUnauthorized)
         fmt.Fprintln(w, "Missing token in request header")
-        return false
+        return false,""
     }
     token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
         return secretKey, nil
@@ -72,23 +72,23 @@ func tokenVerfiy(w http.ResponseWriter, r *http.Request) bool {
         if err == jwt.ErrSignatureInvalid {
             w.WriteHeader(http.StatusUnauthorized)
             fmt.Fprintln(w, "Invalid token signature")
-            return false
+            return false,""
         }
         w.WriteHeader(http.StatusBadRequest)
         fmt.Fprintln(w, "Invalid token")
-        return false
+        return false,""
     }
     if !token.Valid {
         w.WriteHeader(http.StatusUnauthorized)
         fmt.Fprintln(w, "Invalid token")
-        return false
+        return false,""
     }
-    _, ok := token.Claims.(*Claims)
+    claims, ok := token.Claims.(*Claims)
     if !ok {
         w.WriteHeader(http.StatusInternalServerError)
         fmt.Fprintln(w, "Error getting claims from token")
-        return false
+        return false, ""
     }
-    // fmt.Fprintf(w, "Welcome %s!", claims.Username)
-	return true
+
+	return true, claims.Username
 }

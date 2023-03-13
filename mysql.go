@@ -22,15 +22,16 @@ type GameResult struct {
 	Coin      	string  		`gorm:"column:coin"`
 	CreatedAt  	time.Time 		`gorm:"column:created_at"`
 	UpdatedAt  	time.Time 		`gorm:"column:updated_at"`
+	Name 		string 			`gorm:"column:name"`
 }
 
 type Member struct {
 	MemberId 	uint64 		`gorm:"primaryKey;autoIncrement"`
-	Email 		string 		`gorm:"column:email;type:text"`
-	Wallet 		string 		`gorm:"column:wallet;type:text"` 
-	PrivateKey  string 		`gorm:"column:private_key;type:text"`
+	Email 		string 		`gorm:"column:email;uniqueIndex;type:varchar(255)"`
+	Wallet 		string 		`gorm:"column:wallet;uniqueIndex;type:varchar(255)"` 
+	PrivateKey  string 		`gorm:"column:private_key;uniqueIndex;type:varchar(255)"`
 	Balance 	float64 	`gorm:"column:balance"`
-	Name 		string 		`gorm:"column:name"`
+	Name 		string 		`gorm:"conumn:name;uniqueIndex;type:varchar(255)"`
 	Password 	string 		`gorm:"cloumn:password"`
 	CreatedAt   time.Time 	`gorm:"column:created_at"`
 	UpdatedAt   time.Time 	`gorm:"column:updated_at"`
@@ -114,9 +115,8 @@ func appendBetHistory(gameResult GameResult, betAmount float64) error {
 
 
     // 獲取行鎖(必須)
-    tx.WithContext(context.Background()).Clauses(
-		clause.Locking{Strength: "UPDATE"}).Find(&GameResult{})
-
+    // tx.WithContext(context.Background()).Clauses(
+	// 	clause.Locking{Strength: "UPDATE"}).Find(&GameResult{})
 
     // 執行更新
     if err = tx.Create(&gameResult).Error; err != nil {
@@ -124,9 +124,8 @@ func appendBetHistory(gameResult GameResult, betAmount float64) error {
         panic(err)
     }
 
- 	if err = updatePlayerBalance(gameResult.Profit, betAmount); err != nil {
-		tx.Rollback()
-		return err
+ 	if err = updatePlayerBalance(gameResult, betAmount); err != nil {
+		panic(err)
 	}
 
 
@@ -145,7 +144,7 @@ func handlePanic() {
 	}
 }
 
-func updatePlayerBalance(profit float64, betAmount float64) error {
+func updatePlayerBalance(grs GameResult, betAmount float64) error {
 	tx := DB.Begin()
 	var err error
     defer func() {
@@ -161,7 +160,7 @@ func updatePlayerBalance(profit float64, betAmount float64) error {
 	// 獲取行鎖(必須)
 	err = tx.WithContext(context.Background()).Clauses(
 		clause.Locking{Strength: "UPDATE"}).
-		Where("wallet = ?", "0x21afd6eeC226Bebcb6Ce290a7710677F1CDE3eF6").
+		Where("name", grs.Name).
 		First(&user).
 		Error
 	if err != nil {
@@ -173,7 +172,7 @@ func updatePlayerBalance(profit float64, betAmount float64) error {
 		return fmt.Errorf("user.Balance < betAmount")
 	}
 
-	balance := bigFloatAdd(user.Balance, profit)
+	balance := bigFloatAdd(user.Balance, grs.Profit)
 	
 	// Update 
 	tx.Model(&user).Update("balance", balance)
@@ -197,9 +196,9 @@ func bigFloatAdd(a float64, b float64) float64{
 }
 
 // For API
-func getPlayerBalanceFromDB(wallet string) float64{
+func getPlayerBalanceFromDB(name string) float64{
 	var user Member
-	DB.Where("wallet", wallet).First(&user)
+	DB.Where("name", name).First(&user)
 
 	return user.Balance
 }
@@ -229,4 +228,18 @@ func getUserDataFromDB(name string) (string,string) {
 
 	DB.Where("name", name).First(&user)
 	return user.Name, user.Password
+}
+
+func getUserMemberIdFromDB(name string) uint64 {
+	var user Member
+
+	DB.Where("name", name).First(&user)
+	return user.MemberId
+}
+
+func getUserWalletFromDB(name string) string {
+	var user Member
+
+	DB.Where("name", name).First(&user)
+	return user.Wallet
 }

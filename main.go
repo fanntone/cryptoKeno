@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	// "errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -39,6 +38,7 @@ type cryptoKeonResponse struct {
 type keonRequest struct {
 	Req  cryptoKeonRequest
 	Resp chan cryptoKeonResponse
+    Name string  `json:"Name"`
 }
 
 const (
@@ -55,21 +55,16 @@ func main() {
 		activeTask int64
 	)
 
-	// taskQueue := make(chan request, maxQueue)
-    taskQueue2 := make(chan keonRequest, maxQueue)
+    taskQueue := make(chan keonRequest, maxQueue)
     errChan := make(chan error)
 
 	// create workers
-	for i := 0; i < maxWorkers; i++ {
-        // go initSampleTaskQueue(taskQueue, queueSize, activeTask)
-		go initBetTaskQueue(taskQueue2, queueSize, activeTask, errChan)
+	for  i := 0; i < maxWorkers; i++ {
+		go initBetTaskQueue(taskQueue, queueSize, activeTask, errChan)
 	}
 
-	// test
-
 	// Set up the http handler function
-	// http.HandleFunc("/testrand", handleRequest(&queueSize, &activeTask, taskQueue))
-	http.HandleFunc("/cryptokeon", cryptoKeon(&queueSize, &activeTask, taskQueue2, errChan))
+	http.HandleFunc("/cryptokeon", cryptoKeon(&queueSize, &activeTask, taskQueue, errChan))
 
 	// API
 	http.HandleFunc("/getPlayerBalance", getPlayerBalance)
@@ -80,39 +75,49 @@ func main() {
 	log.Fatal(http.ListenAndServe(":5566", nil))
 }
 
-func initBetTaskQueue(taskQueue2 chan keonRequest, queueSize int64, activeTask int64, errChan chan error) {
+func initBetTaskQueue(taskQueue chan keonRequest, queueSize int64, activeTask int64, errChan chan error) {
     defer func() {
         if r := recover(); r != nil {
             log.Println("initBetTaskQueue defer recovered from panic:", r)
+            errChan <- fmt.Errorf("%v",r)
         }
+        
         close(errChan)
     }()
 
-    for req := range taskQueue2 {
+    var err error
+    for req := range taskQueue {
         payout, winfields, profit := SettleKeno(req.Req.SelectedFields, req.Req.BetAmount)
         // 不同幣種的下限值會不一樣, 這邊還需要再優化
         switch req.Req.CoinType {
         case "ETH":
             if req.Req.BetAmount < 0.0001 {
+                err = fmt.Errorf("ether bet amount low to minbet")
+                errChan <- err
                 continue
             }
         case "USDT":
             if req.Req.BetAmount < 1.0 {
+                err = fmt.Errorf("usdt bet amount low to minbet")
+                errChan <- err
                 continue
             }
 
         default:
+            err = fmt.Errorf("bet coin not supported")
+            errChan <- err
             continue
         }
         wf, err := json.Marshal(winfields)
         if err != nil {
-            continue
+            panic(err)
         }
         grs := GameResult{
             Payout:    payout,
             WinFields: string(wf),
             Profit:    profit,
             Coin:      req.Req.CoinType,
+            Name:      req.Name,
         }
 
         // response
@@ -124,8 +129,7 @@ func initBetTaskQueue(taskQueue2 chan keonRequest, queueSize int64, activeTask i
         }
 
         if err := appendBetHistory(grs, req.Req.BetAmount); err != nil { 
-            log.Println("appendBetHistory error")
-            errChan <- fmt.Errorf("failed to append bet history: %v", err)
+            continue
         }
         
         req.Resp <- resp
@@ -138,9 +142,10 @@ func cryptoKeon(queueSize *int64, activeTask *int64, taskQueue chan keonRequest,
 	return func(w http.ResponseWriter, r *http.Request) {
 		crosSettings(w)
 
-		if !tokenVerfiy(w, r) {
-			return
-		}
+        verify, name := tokenVerfiy(w, r)
+        if !verify {
+            return
+        }
 
 		if r.Method != "POST" {
 			http.Error(w, "Only POST requests are supported", http.StatusMethodNotAllowed)
@@ -170,6 +175,7 @@ func cryptoKeon(queueSize *int64, activeTask *int64, taskQueue chan keonRequest,
 		req := keonRequest{
 			Req:  cryptokeonReq,
 			Resp: respChan,
+            Name: name,
 		}
 
 		// Check if there are too many active tasks
@@ -178,7 +184,6 @@ func cryptoKeon(queueSize *int64, activeTask *int64, taskQueue chan keonRequest,
 			atomic.AddInt64(queueSize, -1)
 			return
 		}
-
 		taskQueue <- req
 		atomic.AddInt64(activeTask, 1)
 
@@ -213,7 +218,8 @@ func crosSettings(w http.ResponseWriter) {
 func getPlayerBalance(w http.ResponseWriter, r *http.Request) {
 	crosSettings(w)
 
-	if !tokenVerfiy(w, r) {
+    verify, _ := tokenVerfiy(w, r)
+	if !verify {
 		return
 	}
 
@@ -243,7 +249,8 @@ func getPlayerBalance(w http.ResponseWriter, r *http.Request) {
 func getAllBetHistory(w http.ResponseWriter, r *http.Request) {
 	crosSettings(w)
 
-	if !tokenVerfiy(w, r) {
+    verify, _ := tokenVerfiy(w, r)
+	if !verify {
 		return
 	}
 
