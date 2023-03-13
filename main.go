@@ -42,7 +42,7 @@ type keonRequest struct {
 }
 
 const (
-	maxWorkers = 5
+	maxWorkers = 2
 	maxQueue   = 100
 )
 
@@ -89,8 +89,10 @@ func initBetTaskQueue(taskQueue chan keonRequest, queueSize *int64, activeTask *
     for req := range taskQueue {
 		// Check if there are too many active tasks
 		if atomic.LoadInt64(activeTask) >= maxWorkers {
-            fmt.Println("queueSize:", atomic.LoadInt64(queueSize), "activeTask:", atomic.LoadInt64(activeTask))
-			continue 
+            log.Println("activeTask >= maxWorkers")
+            log.Println("queueSize:", atomic.LoadInt64(queueSize), "activeTask:", atomic.LoadInt64(activeTask))
+			atomic.AddInt64(queueSize, -1)
+            continue 
 		}
 
         atomic.AddInt64(activeTask, 1)
@@ -162,7 +164,7 @@ func cryptoKeon(queueSize *int64, activeTask *int64, taskQueue chan keonRequest,
 		// Limit the number of requests to maxQueue
 		if atomic.LoadInt64(queueSize) >= maxQueue {
 			http.Error(w, "Too many requests queued", http.StatusServiceUnavailable)
-			fmt.Println("queueSize:", atomic.LoadInt64(queueSize), "activeTask:", atomic.LoadInt64(activeTask))
+			log.Println("queueSize:", atomic.LoadInt64(queueSize), "activeTask:", atomic.LoadInt64(activeTask))
 			return
 		}
 		atomic.AddInt64(queueSize, 1)
@@ -186,9 +188,7 @@ func cryptoKeon(queueSize *int64, activeTask *int64, taskQueue chan keonRequest,
 		}
 
 		taskQueue <- req
-		// atomic.AddInt64(activeTask, 1)
-        fmt.Println("queueSize2:", atomic.LoadInt64(queueSize), "activeTask2:", atomic.LoadInt64(activeTask))
-
+        
 		// Wait for the response
 		select {
 		case resp := <-respChan:
