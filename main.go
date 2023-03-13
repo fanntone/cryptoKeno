@@ -43,7 +43,7 @@ type keonRequest struct {
 
 const (
 	maxWorkers = 5
-	maxQueue   = 50
+	maxQueue   = 100
 )
 
 func main() {
@@ -60,7 +60,7 @@ func main() {
 
 	// create workers
 	for  i := 0; i < maxWorkers; i++ {
-		go initBetTaskQueue(taskQueue, queueSize, activeTask, errChan)
+		go initBetTaskQueue(taskQueue, &queueSize, &activeTask, errChan)
 	}
 
 	// Set up the http handler function
@@ -75,7 +75,7 @@ func main() {
 	log.Fatal(http.ListenAndServe(":5566", nil))
 }
 
-func initBetTaskQueue(taskQueue chan keonRequest, queueSize int64, activeTask int64, errChan chan error) {
+func initBetTaskQueue(taskQueue chan keonRequest, queueSize *int64, activeTask *int64, errChan chan error) {
     defer func() {
         if r := recover(); r != nil {
             log.Println("initBetTaskQueue defer recovered from panic:", r)
@@ -87,6 +87,13 @@ func initBetTaskQueue(taskQueue chan keonRequest, queueSize int64, activeTask in
 
     var err error
     for req := range taskQueue {
+		// Check if there are too many active tasks
+		if atomic.LoadInt64(activeTask) >= maxWorkers {
+            fmt.Println("queueSize:", atomic.LoadInt64(queueSize), "activeTask:", atomic.LoadInt64(activeTask))
+			continue 
+		}
+
+        atomic.AddInt64(activeTask, 1)
         payout, winfields, profit := SettleKeno(req.Req.SelectedFields, req.Req.BetAmount)
         // 不同幣種的下限值會不一樣, 這邊還需要再優化
         switch req.Req.CoinType {
@@ -133,8 +140,8 @@ func initBetTaskQueue(taskQueue chan keonRequest, queueSize int64, activeTask in
         }
         
         req.Resp <- resp
-        atomic.AddInt64(&queueSize, -1)
-        atomic.AddInt64(&activeTask, -1)
+        atomic.AddInt64(queueSize, -1)
+        atomic.AddInt64(activeTask, -1)
     }
 }
 
@@ -178,14 +185,9 @@ func cryptoKeon(queueSize *int64, activeTask *int64, taskQueue chan keonRequest,
             Name: name,
 		}
 
-		// Check if there are too many active tasks
-		if atomic.LoadInt64(activeTask) >= maxWorkers {
-			http.Error(w, "Too many active tasks", http.StatusServiceUnavailable)
-			atomic.AddInt64(queueSize, -1)
-			return
-		}
 		taskQueue <- req
-		atomic.AddInt64(activeTask, 1)
+		// atomic.AddInt64(activeTask, 1)
+        fmt.Println("queueSize2:", atomic.LoadInt64(queueSize), "activeTask2:", atomic.LoadInt64(activeTask))
 
 		// Wait for the response
 		select {
@@ -195,6 +197,7 @@ func cryptoKeon(queueSize *int64, activeTask *int64, taskQueue chan keonRequest,
 			if err != nil {
 				log.Println("Failed to write response:", err)
 			}
+
 		case <-time.After(10 * time.Second):
 			http.Error(w, "Request timed out", http.StatusRequestTimeout)
 			atomic.AddInt64(queueSize, -1)
